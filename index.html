@@ -1,0 +1,505 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generador de Horarios UTP → PDF (A4 Única Página)</title>
+  <style>
+    :root {
+      --rojo-utp: #a50000;
+      --texto: #222;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--texto);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 18px 10px 40px;
+    }
+    .panel {
+      width: min(880px, 96vw);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      border: 1px solid #eee;
+      border-radius: 12px;
+      padding: 16px;
+      background: #fff;
+    }
+    .panel h1 { margin: 0 0 10px; font-size: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+    .half { grid-column: span 3; }
+    label { font-size: 13px; color: #444; display: block; margin-bottom: 6px; }
+    input[type="text"]{
+      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;
+    }
+    .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      appearance: none; border: none; background: var(--rojo-utp); color: #fff;
+      padding: 10px 14px; border-radius: 10px; font-weight: 600; cursor: pointer;
+    }
+    .btn.secondary { background: #333; }
+    .hint { font-size: 12px; color: #666; }
+
+    .lang-wrapper{
+      display:flex;
+      justify-content:flex-end;
+      align-items:center;
+      margin-bottom:6px;
+      gap:8px;
+      font-size:12px;
+    }
+    .lang-wrapper select{
+      padding:3px 6px;
+      border-radius:6px;
+      border:1px solid #ccc;
+      font-size:12px;
+    }
+
+    .page {
+      width: 794px;
+      height: 1123px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      background: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .top-bar {height:6px;background:var(--rojo-utp);}
+    header{
+      display:flex; justify-content:space-between; align-items:center; padding: 12px 22px;
+    }
+    header img{height:50px}
+    .meta-right{font-size:13px;text-align:right}
+    .titulo{ text-align:center; font-weight:700; font-size:20px; padding:6px 0 10px; }
+    .info{ padding:0 22px 10px; font-size:13px; line-height:1.45; }
+    .info strong{ color:var(--rojo-utp) }
+    .info-sep{height:3px;background:#fff;border-top:2px solid var(--rojo-utp);margin-top:8px}
+    table{ border-collapse:collapse; width: calc(100% - 44px); margin: 14px 22px 8px; font-size:12.8px; }
+    th, td{ border:1px solid #e6e6e6; padding:8px 6px; vertical-align:middle; }
+    thead th{ background:var(--rojo-utp); color:#fff; font-weight:700; text-align:center; padding:10px 6px; border-bottom:3px solid #7a0000; }
+    tbody tr:nth-child(even){background:#fafafa}
+    tbody td{ border-top:1px solid #eee }
+    tfoot td{ background:#f7f7f7; font-weight:700; padding:10px 8px }
+    footer{ padding:12px 22px; display:flex; justify-content:space-between; font-size:13px; color:#444; border-top:2px solid #eee; margin-top:6px; }
+    .bottom-sep{height:4px;background:var(--rojo-utp);margin-top:8px}
+
+    @page { size: A4 portrait; margin: 0; }
+    @media print{
+      body{padding:0;background:#fff}
+      .panel{display:none}
+      .page{box-shadow:none;margin:0}
+    }
+  </style>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#a50000">
+
+</head>
+<body>
+
+  <div class="panel">
+    <h1 id="appTitle">Generador de Horarios UTP → PDF (A4 única página)</h1>
+
+    <div class="lang-wrapper">
+      <span id="langLabel">Idioma / Language:</span>
+      <select id="selLang">
+        <option value="es">Español</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <div class="grid">
+      <div class="half">
+        <label for="inpNombre" class="lbl-nombre">Nombre y Apellidos</label>
+        <input id="inpNombre" type="text" placeholder="APELLIDO, NOMBRE(S)" />
+      </div>
+      <div class="half">
+        <label for="inpPeriodo" class="lbl-periodo">Periodo</label>
+        <input id="inpPeriodo" type="text" value="2025 - Ciclo 2 Agosto" />
+      </div>
+      <div class="hint hint-main" style="grid-column: 1 / -1">
+        * La <b>Escuela</b> se elige automáticamente de un listado de carreras UTP y varía cada vez. El <b>código estudiantil</b> se genera internamente cambiando los últimos 3 dígitos.
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="btnGenerar">Generar vista previa</button>
+      <button class="btn secondary" id="btnPDF" disabled>Descargar PDF</button>
+    </div>
+  </div>
+
+  <div id="salida"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script>
+    const i18n = {
+      es: {
+        appTitle: "Generador de Horarios UTP → PDF (A4 única página)",
+        lblNombre: "Nombre y Apellidos",
+        lblPeriodo: "Periodo",
+        hintText: "* La <b>Escuela</b> se elige automáticamente de un listado de carreras UTP y varía cada vez. El <b>código estudiantil</b> se genera internamente cambiando los últimos 3 dígitos.",
+        btnGenerar: "Generar vista previa",
+        btnPDF: "Descargar PDF",
+        docTitle: "Horario de Clases",
+        fecha: "Fecha:",
+        hora: "Hora:",
+        alumno: "ALUMNO:",
+        escuela: "ESCUELA:",
+        campus: "CAMPUS:",
+        periodo: "PERIODO:",
+        colNum: "N°",
+        colCurso: "Curso",
+        colDocente: "Docente",
+        colNroVez: "Nro vez",
+        colHoras: "Hrs",
+        colCreditos: "Créditos",
+        colCiclo: "Ciclo",
+        colSeccion: "Sección",
+        colUbicacion: "Ubicación o plataforma",
+        colHorario: "Horario",
+        colModalidad: "Modalidad",
+        foot1: "Secretaría Académica",
+        foot2: "UTP - Gerencia de Sistemas",
+        totHorasLabel: "Total de horas semanales:",
+        totCreditosLabel: "Total de créditos:",
+        creditSuffix: "Créditos",
+        fileTitleBase: "Horario de Clases"
+      },
+      en: {
+        appTitle: "UTP Timetable Generator → PDF (single A4 page)",
+        lblNombre: "Full name",
+        lblPeriodo: "Term",
+        hintText: "* The <b>School</b> is chosen automatically from a UTP programs list and may change each time. The <b>student code</b> is generated internally by changing the last 3 digits.",
+        btnGenerar: "Generate preview",
+        btnPDF: "Download PDF",
+        docTitle: "Class Schedule",
+        fecha: "Date:",
+        hora: "Time:",
+        alumno: "STUDENT:",
+        escuela: "SCHOOL:",
+        campus: "CAMPUS:",
+        periodo: "TERM:",
+        colNum: "No.",
+        colCurso: "Course",
+        colDocente: "Teacher",
+        colNroVez: "Attempt",
+        colHoras: "Hrs",
+        colCreditos: "Credits",
+        colCiclo: "Cycle",
+        colSeccion: "Section",
+        colUbicacion: "Location or platform",
+        colHorario: "Schedule",
+        colModalidad: "Modality",
+        foot1: "Academic Office",
+        foot2: "UTP - Systems Management",
+        totHorasLabel: "Total weekly hours:",
+        totCreditosLabel: "Total credits:",
+        creditSuffix: "Credits",
+        fileTitleBase: "Class Schedule"
+      }
+    };
+
+    let currentLang = "es";
+
+    function t(key) {
+      return (i18n[currentLang] && i18n[currentLang][key]) || (i18n.es && i18n.es[key]) || key;
+    }
+
+    function applyUITranslations() {
+      document.documentElement.lang = currentLang;
+
+      const appTitle = document.getElementById("appTitle");
+      if (appTitle) appTitle.textContent = t("appTitle");
+
+      const lblNombre = document.querySelector(".lbl-nombre");
+      if (lblNombre) lblNombre.textContent = t("lblNombre");
+
+      const lblPeriodo = document.querySelector(".lbl-periodo");
+      if (lblPeriodo) lblPeriodo.textContent = t("lblPeriodo");
+
+      const hintMain = document.querySelector(".hint-main");
+      if (hintMain) hintMain.innerHTML = t("hintText");
+
+      const btnGenerar = document.getElementById("btnGenerar");
+      if (btnGenerar) btnGenerar.textContent = t("btnGenerar");
+
+      const btnPDF = document.getElementById("btnPDF");
+      if (btnPDF) btnPDF.textContent = t("btnPDF");
+    }
+
+    const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const randPick = (arr) => arr[randInt(0, arr.length - 1)];
+    const randFloatStep = (min, max, step = 1.0) => {
+      const steps = Math.round((max - min) / step);
+      return (min + randInt(0, steps) * step).toFixed(1);
+    };
+    const sanitizeFilename = (s) => s.replace(/[\/\\:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+
+    const carrerasUTP = [
+      "ING. INDUSTRIAL","ING. CIVIL","ING. DE SISTEMAS E INFORMÁTICA",
+      "ING. MECATRÓNICA","ING. ELECTRÓNICA","ING. ELÉCTRICA Y DE POTENCIA",
+      "ING. MECÁNICA","ING. AMBIENTAL","ING. MINAS","ING. TELECOMUNICACIONES",
+      "ADMINISTRACIÓN DE EMPRESAS","ADMINISTRACIÓN Y MARKETING","NEGOCIOS INTERNACIONALES",
+      "BANCA Y FINANZAS","CONTABILIDAD",
+      "CIENCIAS DE LA COMUNICACIÓN","PUBLICIDAD","ARQUITECTURA",
+      "DERECHO","PSICOLOGÍA","EDUCACIÓN INICIAL","ENFERMERÍA","NUTRICIÓN Y DIETÉTICA"
+    ];
+
+    const docentes = [
+      "Urcia Misari, Jose Antonio",
+      "Lostaunau Martinez, Julio Enrique",
+      "Gutierrez Perez, Fernando Raul",
+      "Barranzuela Mamani, Kimberley Sara",
+      "Salazar Torres, Maria Fernanda",
+      "Rojas Delgado, Victor Hugo"
+    ];
+    const cursosBase = [
+      "1E10P Máquinas Eléctricas Rotativas",
+      "1E14P Sistemas De Potencia Activa Y Reactiva",
+      "1E16P Ingeniería De Iluminación Y Valuación De La Tarificación Eléctrica",
+      "1E21P Planificación Y Operación De Sistemas De Potencia",
+      "1N11I Formación Para La Empleabilidad",
+      "1E15R Líneas Y Sistemas De Transmisión Y Producción",
+      "1E18P Protecciones Eléctricas",
+      "1E19P Subestaciones y Calidad de Energía"
+    ];
+    const ubicaciones = [
+      "Pabellón A Aula 0101 / Pabellón D Aula 0503",
+      "Pabellón E Aula 0304 / Pabellón E Aula 0503",
+      "Pabellón E Aula 0602 / Pabellón D Aula 0402 / Pabellón A Aula 0101",
+      "Pabellón E Aula 0304 / Pabellón E Aula 0307",
+      "UTP+Class"
+    ];
+    const franjas = [
+      "Lunes 08:30 - 10:00 · Miércoles 08:30 - 10:00",
+      "Martes 08:30 - 10:00 · Jueves 08:30 - 10:00",
+      "Lunes 20:15 - 21:45 · Viernes 18:30 - 20:00",
+      "Sábado 15:00 - 18:00",
+      "Disponible 24/7"
+    ];
+    const modalidadSegunFranja = (franja) => franja.includes("Disponible") ? "Virtual 24/7" : "Presencial";
+
+    let codigoActual = null;
+    const baseCodigo = "U22220440";
+
+    function codigoInterno() {
+      const m = baseCodigo.match(/^(.*?)(\d{3})$/);
+      if (!m) return baseCodigo;
+      const pref = m[1];
+      const nuevo = String(randInt(0, 999)).padStart(3, "0");
+      return pref + nuevo;
+    }
+
+    function generarFilas(cantidad = 6) {
+      const cursos = [...cursosBase].sort(() => Math.random() - 0.5).slice(0, cantidad);
+      const filas = [];
+      for (let i = 0; i < cursos.length; i++) {
+        const curso = cursos[i];
+        const docente = randPick(docentes);
+        const nroVez = 1;
+        const horas = randFloatStep(3.0, 5.0, 1.0);
+        const creditos = randFloatStep(2.0, 5.0, 1.0);
+        const ciclo = String(randInt(1, 10)).padStart(2, "0");
+        const seccion = String(randInt(10000, 49999));
+        const franja = randPick(franjas);
+        const ubicacion = franja.includes("Disponible") ? "UTP+Class" : randPick(ubicaciones.filter(u => !u.includes("UTP+Class")));
+        const modalidad = modalidadSegunFranja(franja);
+        filas.push({
+          nro: String(i + 1).padStart(2, "0"),
+          curso, docente, nroVez, horas, creditos, ciclo, seccion,
+          ubicacion, horario: franja, modalidad
+        });
+      }
+      return filas;
+    }
+
+    function calcularTotales(filas) {
+      const totalHoras = Math.round(filas.reduce((acc, f) => acc + parseFloat(f.horas), 0));
+      const totalCreditos = filas.reduce((acc, f) => acc + parseFloat(f.creditos), 0).toFixed(1);
+      return { totalHoras, totalCreditos };
+    }
+
+    const fechaActualStr = () => {
+      const d = new Date();
+      return String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0") + "/" + d.getFullYear();
+    };
+    const horaActualStr = () => {
+      const d = new Date();
+      return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0") + ":" + String(d.getSeconds()).padStart(2,"0");
+    };
+
+    function renderDocumento({nombre, periodo}) {
+      const escuela = randPick(carrerasUTP);
+      const campus = "LIATE";
+      codigoActual = codigoInterno();
+      const codigo = codigoActual;
+      const filas = generarFilas(6);
+      const { totalHoras, totalCreditos } = calcularTotales(filas);
+
+      const nombreUpper = (nombre || "").toUpperCase().replace(/\s+/g, " ").trim();
+      document.title = `${t("fileTitleBase")} — ${codigo} - ${nombreUpper}`;
+
+      const html = `
+      <div class="page" id="hoja" data-codigo="${codigo}">
+        <div class="top-bar"></div>
+        <header>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Utplogonuevo.svg/2560px-Utplogonuevo.svg.png" alt="Logo UTP">
+          <div class="meta-right">
+            <div><strong>${t("fecha")}</strong> ${fechaActualStr()}</div>
+            <div><strong>${t("hora")}</strong> ${horaActualStr()}</div>
+          </div>
+        </header>
+
+        <div class="titulo">${t("docTitle")}</div>
+
+        <div class="info">
+          <p><strong>${t("alumno")}</strong> ${codigo} - ${nombreUpper}<br>
+          <strong>${t("escuela")}</strong> ${escuela}<br>
+          <strong>${t("campus")}</strong> ${campus}<br>
+          <strong>${t("periodo")}</strong> ${periodo}</p>
+        </div>
+
+        <div class="info-sep"></div>
+
+        <table role="table">
+          <thead>
+            <tr>
+              <th style="width:34px">${t("colNum")}</th>
+              <th style="width:220px">${t("colCurso")}</th>
+              <th style="width:170px">${t("colDocente")}</th>
+              <th style="width:54px">${t("colNroVez")}</th>
+              <th style="width:54px">${t("colHoras")}</th>
+              <th style="width:84px">${t("colCreditos")}</th>
+              <th style="width:54px">${t("colCiclo")}</th>
+              <th style="width:74px">${t("colSeccion")}</th>
+              <th>${t("colUbicacion")}</th>
+              <th style="width:140px">${t("colHorario")}</th>
+              <th style="width:100px">${t("colModalidad")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filas.map(f => `
+              <tr>
+                <td>${f.nro}</td>
+                <td>${f.curso}</td>
+                <td>${f.docente}</td>
+                <td>${f.nroVez}</td>
+                <td>${f.horas}</td>
+                <td>${f.creditos} ${t("creditSuffix")}</td>
+                <td>${f.ciclo}</td>
+                <td>${f.seccion}</td>
+                <td>${f.ubicacion}</td>
+                <td>${f.horario}</td>
+                <td>${f.modalidad}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="9"></td>
+              <td>${t("totHorasLabel")}</td>
+              <td>${totalHoras}</td>
+            </tr>
+            <tr>
+              <td colspan="9"></td>
+              <td>${t("totCreditosLabel")}</td>
+              <td>${totalCreditos}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <footer>
+          <div>${t("foot1")}</div>
+          <div>${t("foot2")}</div>
+        </footer>
+        <div class="bottom-sep"></div>
+      </div>`;
+      document.getElementById("salida").innerHTML = html;
+    }
+
+    const A4_WIDTH_PX = 794;
+    const A4_HEIGHT_PX = 1123;
+    function fitToA4Once() {
+      const hoja = document.getElementById("hoja");
+      if (!hoja) return;
+      const contentHeight = hoja.scrollHeight;
+      if (contentHeight <= A4_HEIGHT_PX) {
+        hoja.style.transform = "";
+        hoja.style.transformOrigin = "";
+        hoja.style.width = A4_WIDTH_PX + "px";
+        hoja.style.height = A4_HEIGHT_PX + "px";
+        return;
+      }
+      const scale = A4_HEIGHT_PX / contentHeight;
+      hoja.style.transform = `scale(${scale})`;
+      hoja.style.transformOrigin = "top left";
+      hoja.style.width = (A4_WIDTH_PX / scale) + "px";
+      hoja.style.height = (A4_HEIGHT_PX / scale) + "px";
+    }
+
+    const btnGenerar = document.getElementById("btnGenerar");
+    const btnPDF = document.getElementById("btnPDF");
+    const selLang = document.getElementById("selLang");
+
+    btnGenerar.addEventListener("click", () => {
+      const nombre = (document.getElementById("inpNombre").value || "REINOSO, ALBERTO").trim();
+      const periodo = (document.getElementById("inpPeriodo").value || "2025 - Ciclo 2 Agosto").trim();
+      renderDocumento({nombre, periodo});
+      requestAnimationFrame(() => {
+        fitToA4Once();
+        btnPDF.disabled = false;
+      });
+    });
+
+    btnPDF.addEventListener("click", () => {
+      const hoja = document.getElementById("hoja");
+      if (!hoja) return;
+      fitToA4Once();
+      const nombreUpper = (document.getElementById("inpNombre").value || "REINOSO, ALBERTO").trim().toUpperCase();
+      const codigo = (document.getElementById("hoja")?.dataset.codigo) || codigoActual;
+      const fileTitle = `${t("fileTitleBase")} — ${codigo} - ${nombreUpper}`;
+      const opt = {
+        margin: [0, 0, 0, 0],
+        filename: sanitizeFilename(fileTitle) + ".pdf",
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all'] }
+      };
+      html2pdf().from(hoja).set(opt).save();
+    });
+
+    selLang.addEventListener("change", () => {
+      currentLang = selLang.value || "es";
+      applyUITranslations();
+      if (document.getElementById("hoja")) {
+        const nombre = (document.getElementById("inpNombre").value || "REINOSO, ALBERTO").trim();
+        const periodo = (document.getElementById("inpPeriodo").value || "2025 - Ciclo 2 Agosto").trim();
+        renderDocumento({nombre, periodo});
+        requestAnimationFrame(() => {
+          fitToA4Once();
+        });
+      }
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("inpNombre").value = "REINOSO, ALBERTO";
+      document.getElementById("inpPeriodo").value = "2025 - Ciclo 2 Agosto";
+      applyUITranslations();
+      btnGenerar.click();
+    });
+  </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js');
+  });
+}
+</script>
+
+</body>
+</html>
